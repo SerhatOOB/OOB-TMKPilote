@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
 <title>Copilote TMK · OOB</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -428,6 +429,24 @@ tbody tr:hover{background:var(--elev-2);}
   .set-grid{grid-template-columns:1fr 1fr; }
 }
 @media (prefers-reduced-motion:reduce){*{animation-duration:.001ms !important; transition-duration:.05s !important;}}
+
+/* ===== ECRAN DE CHOIX (picker) ===== */
+#picker{position:fixed; inset:0; z-index:200; display:none; align-items:center; justify-content:center; padding:24px; background:var(--bg); background-image:var(--bg-grad);}
+.pk-card{text-align:center; max-width:560px; width:100%;}
+.pk-logo{width:64px; height:64px; border-radius:19px; margin:0 auto 22px; background:linear-gradient(150deg,#FF8B45,var(--accent) 55%,var(--accent-press)); display:flex; align-items:center; justify-content:center; color:#fff; font-family:var(--disp); font-weight:800; font-size:28px; box-shadow:0 8px 26px rgba(255,107,26,.4), inset 0 1px 0 rgba(255,255,255,.4);}
+.pk-card h2{font-family:var(--disp); font-weight:800; font-size:30px; letter-spacing:-.03em;}
+.pk-card p{color:var(--tx-3); font-size:15px; margin-top:8px; margin-bottom:30px;}
+.pk-grid{display:grid; grid-template-columns:1fr 1fr; gap:13px;}
+.pk-btn{display:flex; align-items:center; gap:14px; text-decoration:none; cursor:pointer; background:var(--elev); border:1px solid var(--line-2); border-radius:var(--rl); padding:18px 20px; box-shadow:var(--sh); transition:.16s var(--ease); font-family:var(--ui); font-weight:650; font-size:16px; color:var(--tx); text-align:left;}
+.pk-btn:hover{transform:translateY(-2px); box-shadow:var(--sh-lg); border-color:var(--line);}
+.pk-btn:active{transform:translateY(0) scale(.99);}
+.pk-av{width:42px; height:42px; border-radius:12px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-family:var(--disp); font-weight:800; font-size:18px; color:#fff; background:linear-gradient(150deg,#5AC8FA,#0A84FF);}
+.pk-btn:nth-child(2) .pk-av{background:linear-gradient(150deg,#67E8B0,#34C759);}
+.pk-btn:nth-child(3) .pk-av{background:linear-gradient(150deg,#C9A2FF,#AF52DE);}
+.pk-mgr{grid-column:1 / -1; justify-content:center; background:var(--accent-soft); border-color:var(--accent-soft2); color:var(--accent);}
+.pk-mgr .pk-av{background:linear-gradient(150deg,#FF8B45,var(--accent-press));}
+.pk-foot{margin-top:24px; font-size:12px; color:var(--tx-4);}
+@media (max-width:520px){ .pk-grid{grid-template-columns:1fr;} }
 </style>
 </head>
 <body>
@@ -682,6 +701,7 @@ tbody tr:hover{background:var(--elev-2);}
       <div class="toggle-row"><div class="tr-tx"><div class="t1">Thème sombre</div><div class="t2">Bascule entre clair et sombre. Suit le réglage du système par défaut.</div></div><button class="switch" id="themeSwitch" aria-label="Thème sombre"></button></div>
       <div class="toggle-row"><div class="tr-tx"><div class="t1">Exclure les jours fériés français</div><div class="t2">Calcule le rythme requis sur les vrais jours ouvrés (fériés nationaux retirés).</div></div><button class="switch on" id="holidaySwitch" aria-label="Exclure les fériés"></button></div>
     </div>
+    <div id="oobSection">
     <div class="section-h"><span class="st">Intégration OObjectif R1P</span></div>
     <div class="card pad" style="max-width:640px;">
       <div style="background:var(--accent-soft); border:1px solid var(--accent-soft2); border-radius:var(--r); padding:13px 16px; font-size:13px; color:var(--tx-2); line-height:1.6; margin-bottom:18px;">Quand Lucas enregistre un R1TMK, le R1P est ajouté sur OObjectif R1P (compteurs semaine, session et mois, au nom du pilote et de son équipe) et le message Teams part automatiquement, dans le format du dashboard.</div>
@@ -693,6 +713,7 @@ tbody tr:hover{background:var(--elev-2);}
       </div>
       <div style="display:flex; gap:10px; margin-top:14px;"><button class="btn btn-gray btn-sm" id="oobTestBtn">Tester l'envoi Teams</button></div>
       <div style="font-size:12px; color:var(--tx-3); margin-top:12px; line-height:1.6;">Le nom du pilote doit correspondre exactement au nom affiché dans OObjectif R1P, sinon un nouveau pilote serait créé dans le classement. Vérifie l'orthographe et la casse.</div>
+    </div>
     </div>
     <div class="section-h"><span class="st">Données &amp; sauvegarde</span></div>
     <div class="card pad">
@@ -726,6 +747,8 @@ tbody tr:hover{background:var(--elev-2);}
     </div>
   </div>
 </div>
+
+<div id="picker"><div class="pk-card"><div class="pk-logo">T</div><h2>Copilote TMK</h2><p>Choisis ton espace de travail</p><div class="pk-grid" id="pkGrid"></div><div class="pk-foot">Pôle Télémarketing OOB</div></div></div>
 
 <div class="toast" id="toast"><span id="toastIc"></span><span id="toastTx"></span></div>
 <script>
@@ -779,7 +802,13 @@ const CRITERES = [
   {id:'q_multi', pts:7, txt:'Multi-sites ou contexte de croissance identifié'},
   {id:'q_ouvert', pts:5, txt:'Prospect ouvert ou très ouvert'}
 ];
-const STORAGE_KEY = 'oob_copilote_tmk_v2';
+const KNOWN_AGENTS = ['Lucas','Etienne','Maxime'];
+const R1P_PILOT = 'Lucas';
+const _qp = new URLSearchParams(location.search);
+let AGENT_ID = (_qp.get('agent')||'').trim();
+if(AGENT_ID){ const _m=KNOWN_AGENTS.find(a=>a.toLowerCase()===AGENT_ID.toLowerCase()); if(_m) AGENT_ID=_m; }
+const PICKER_MODE = !AGENT_ID;
+const STORAGE_KEY = 'oob_copilote_tmk_v2_' + (AGENT_ID || 'none');
 const OLD_KEY = 'oob_copilote_lucas_v1';
 const THEME_KEY = 'oob_copilote_theme';
 const OOB_PA_DEFAULT = 'https://default18fa1534e40a495f952e52aad3dbbf.05.environment.api.powerplatform.com:443/powerautomate/automations/direct/workflows/878d1841339c49edbc0dcce82c4c45da/triggers/manual/paths/invoke?api-version=1&sp=%2Ftriggers%2Fmanual%2Frun&sv=1.0&sig=XTYuvop498kCkAe4WhbtqkaUewSGZydYykurfre-FNQ';
@@ -801,7 +830,7 @@ function loadState(){
   try{ const raw=localStorage.getItem(STORAGE_KEY); if(raw) s=JSON.parse(raw); }catch(e){}
   if(!s) s=migrateOld();
   if(!s) s={};
-  if(typeof s.agent!=='string'||!s.agent) s.agent=DEFAULTS.agent;
+  s.agent = AGENT_ID || ((typeof s.agent==='string'&&s.agent)?s.agent:DEFAULTS.agent);
   if(typeof s.objectif!=='number'||s.objectif<1) s.objectif=DEFAULTS.objectif;
   if(typeof s.callTarget!=='number'||s.callTarget<1) s.callTarget=DEFAULTS.callTarget;
   if(!Array.isArray(s.commerciaux)||!s.commerciaux.length) s.commerciaux=DEFAULTS.commerciaux.map(c=>({...c}));
@@ -815,7 +844,7 @@ function loadState(){
   if(typeof s.meta.sinceBackup!=='number') s.meta.sinceBackup=s.records.length;
   if(!s.oob || typeof s.oob!=='object') s.oob={};
   if(typeof s.oob.enabled!=='boolean') s.oob.enabled=false;
-  if(!s.oob.pilote) s.oob.pilote='Lucas';
+  if(!s.oob.pilote) s.oob.pilote=AGENT_ID||'Lucas';
   if(!s.oob.equipe) s.oob.equipe='TMK';
   if(typeof s.oob.webhook!=='string'||!s.oob.webhook) s.oob.webhook=OOB_PA_DEFAULT;
   return s;
@@ -841,7 +870,7 @@ function save(silent){
 const CLOUD = { url:'https://ydcfjlogsbkmzzzkxvgo.supabase.co', anonKey:'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlkY2ZqbG9nc2JrbXp6emt4dmdvIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIyMDQ0MDksImV4cCI6MjA4Nzc4MDQwOX0.nF-ZZWucb6BMQvGxZ1iK1SjYyrZ-0dW0fAaYw9cPzls' };
 const CLOUD_ON = !!(CLOUD.url && CLOUD.anonKey);
 let sb=null, cloudOnline=false, cfgPushTimer=null;
-const REC_TABLE='tmk_records', CFG_TABLE='tmk_config', CFG_ID='main';
+const REC_TABLE='tmk_records', CFG_TABLE='tmk_config'; let CFG_ID=AGENT_ID;
 
 function setCloudStatus(kind,label){
   const chip=document.getElementById('saveChip'); if(!chip) return;
@@ -868,26 +897,27 @@ async function cloudInit(){
 async function cloudPull(silent){
   try{ const {data:cfg}=await sb.from(CFG_TABLE).select('data').eq('id',CFG_ID).maybeSingle();
     if(cfg && cfg.data){ const d=cfg.data; if(d.agent)state.agent=d.agent; if(d.objectif)state.objectif=d.objectif; if(d.callTarget)state.callTarget=d.callTarget; if(Array.isArray(d.commerciaux)&&d.commerciaux.length)state.commerciaux=d.commerciaux; if(d.oob)state.oob=d.oob; }
+    else if(AGENT_ID===R1P_PILOT){ try{ const {data:lg}=await sb.from(CFG_TABLE).select('data').eq('id','main').maybeSingle(); if(lg && lg.data){ const d=lg.data; if(d.objectif)state.objectif=d.objectif; if(d.callTarget)state.callTarget=d.callTarget; if(Array.isArray(d.commerciaux)&&d.commerciaux.length)state.commerciaux=d.commerciaux; if(d.oob)state.oob=d.oob; } }catch(e){} cloudPushConfigNow(); }
     else { cloudPushConfigNow(); }
   }catch(e){ if(!silent) throw e; }
-  const {data:recs, error}=await sb.from(REC_TABLE).select('id,data').order('ts',{ascending:false});
+  const {data:recs, error}=await sb.from(REC_TABLE).select('id,data').eq('agent',AGENT_ID).order('ts',{ascending:false});
   if(error){ if(!silent) throw error; return; }
   state.records=(recs||[]).map(r=>r.data).filter(Boolean);
   syncConfig(); save(true); buildMonthSelect(); renderTopbarDynamic(); renderAll();
   if(currentView==='reglages') renderReglages();
   cloudOnline=true; if(!silent) setCloudStatus('online','En ligne');
 }
-async function cloudUpsertRecord(rec){ if(!sb) return; try{ setCloudStatus('sync','Synchro'); const {error}=await sb.from(REC_TABLE).upsert({id:rec.id, ts:rec.ts, data:rec}); if(error) throw error; setCloudStatus('online','En ligne'); }catch(e){ setCloudStatus('offline','Non synchronisé'); toast('Hors ligne : enregistré en local'); } }
-async function cloudUpsertMany(recs){ if(!sb||!recs.length) return; try{ setCloudStatus('sync','Synchro'); const rows=recs.map(r=>({id:r.id, ts:r.ts, data:r})); const {error}=await sb.from(REC_TABLE).upsert(rows); if(error) throw error; setCloudStatus('online','En ligne'); }catch(e){ setCloudStatus('offline','Non synchronisé'); } }
+async function cloudUpsertRecord(rec){ if(!sb) return; try{ setCloudStatus('sync','Synchro'); const {error}=await sb.from(REC_TABLE).upsert({id:rec.id, ts:rec.ts, agent:AGENT_ID, data:rec}); if(error) throw error; setCloudStatus('online','En ligne'); }catch(e){ setCloudStatus('offline','Non synchronisé'); toast('Hors ligne : enregistré en local'); } }
+async function cloudUpsertMany(recs){ if(!sb||!recs.length) return; try{ setCloudStatus('sync','Synchro'); const rows=recs.map(r=>({id:r.id, ts:r.ts, agent:AGENT_ID, data:r})); const {error}=await sb.from(REC_TABLE).upsert(rows); if(error) throw error; setCloudStatus('online','En ligne'); }catch(e){ setCloudStatus('offline','Non synchronisé'); } }
 async function cloudDeleteRecord(id){ if(!sb) return; try{ await sb.from(REC_TABLE).delete().eq('id',id); }catch(e){ toast('Suppression non synchronisée'); } }
-async function cloudDeleteAll(){ if(!sb) return; try{ await sb.from(REC_TABLE).delete().neq('id',''); }catch(e){} }
+async function cloudDeleteAll(){ if(!sb) return; try{ await sb.from(REC_TABLE).delete().eq('agent',AGENT_ID); }catch(e){} }
 function cloudPushConfig(){ if(!sb) return; clearTimeout(cfgPushTimer); cfgPushTimer=setTimeout(cloudPushConfigNow, 600); }
 async function cloudPushConfigNow(){ if(!sb) return; try{ await sb.from(CFG_TABLE).upsert({id:CFG_ID, data:{agent:state.agent, objectif:state.objectif, callTarget:state.callTarget, commerciaux:state.commerciaux, oob:state.oob}}); }catch(e){} }
 function cloudSubscribe(){
   sb.channel('tmk-rt')
-    .on('postgres_changes',{event:'INSERT',schema:'public',table:REC_TABLE},p=>{ const r=p.new&&p.new.data; if(r && !state.records.find(x=>x.id===r.id)){ state.records.unshift(r); save(true); buildMonthSelect(); renderAll(); } })
+    .on('postgres_changes',{event:'INSERT',schema:'public',table:REC_TABLE},p=>{ if(!p.new||p.new.agent!==AGENT_ID) return; const r=p.new.data; if(r && !state.records.find(x=>x.id===r.id)){ state.records.unshift(r); save(true); buildMonthSelect(); renderAll(); } })
     .on('postgres_changes',{event:'DELETE',schema:'public',table:REC_TABLE},p=>{ const id=p.old&&p.old.id; if(id){ state.records=state.records.filter(x=>x.id!==id); save(true); renderAll(); } })
-    .on('postgres_changes',{event:'*',schema:'public',table:CFG_TABLE},p=>{ const d=p.new&&p.new.data; if(d){ if(d.agent)state.agent=d.agent; if(d.objectif)state.objectif=d.objectif; if(d.callTarget)state.callTarget=d.callTarget; if(Array.isArray(d.commerciaux))state.commerciaux=d.commerciaux; if(d.oob)state.oob=d.oob; syncConfig(); save(true); renderTopbarDynamic(); renderAll(); if(currentView==='reglages') renderReglages(); } })
+    .on('postgres_changes',{event:'*',schema:'public',table:CFG_TABLE},p=>{ if(!p.new||p.new.id!==AGENT_ID) return; const d=p.new.data; if(d){ if(d.agent)state.agent=d.agent; if(d.objectif)state.objectif=d.objectif; if(d.callTarget)state.callTarget=d.callTarget; if(Array.isArray(d.commerciaux))state.commerciaux=d.commerciaux; if(d.oob)state.oob=d.oob; syncConfig(); save(true); renderTopbarDynamic(); renderAll(); if(currentView==='reglages') renderReglages(); } })
     .subscribe();
 }
 function addRecord(rec){ state.records.unshift(rec); save(); if(CLOUD_ON) cloudUpsertRecord(rec); }
@@ -1486,6 +1516,8 @@ function renderReglages(){
   document.getElementById('set_agent').value=AGENT;
   document.getElementById('set_obj').value=OBJECTIF;
   document.getElementById('set_calltarget').value=CALLTARGET;
+  { const sa=document.getElementById('set_agent'); sa.value=AGENT; sa.readOnly=true; sa.style.opacity='.7'; sa.title='Défini par le lien d\'accès'; }
+  document.getElementById('oobSection').style.display=(AGENT_ID===R1P_PILOT)?'block':'none';
   document.getElementById('oob_pilote').value=OOB.pilote||'';
   document.getElementById('oob_equipe').value=OOB.equipe||'';
   document.getElementById('oob_webhook').value=OOB.webhook||'';
@@ -1608,8 +1640,14 @@ document.addEventListener('keydown', e=>{
 });
 
 /* ===== INIT ===== */
+function showPicker(){
+  const grid=document.getElementById('pkGrid');
+  grid.innerHTML=KNOWN_AGENTS.map(a=>'<a class="pk-btn" href="?agent='+encodeURIComponent(a)+'"><span class="pk-av">'+a.charAt(0).toUpperCase()+'</span>'+a+'</a>').join('')+'<a class="pk-btn pk-mgr" href="manager.html"><span class="pk-av">\u2605</span>Cockpit manager</a>';
+  document.getElementById('picker').style.display='flex';
+}
 (function init(){
   injectIcons(document);
+  if(PICKER_MODE){ showPicker(); return; }
   document.getElementById('themeBtn').innerHTML = currentTheme()==='dark'?I.sun:I.moon;
   buildLogger();
   buildQualChecks();
