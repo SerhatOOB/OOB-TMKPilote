@@ -975,6 +975,80 @@ function wvUpdatePace(d){
 }
 function wvUpdateHonor(data, elOpt){ const el=elOpt||document.getElementById('wvHonorScene'); if(!el) return; if(wallNames){ const top=data.filter(a=>a.month.done>0).slice(0,3); if(top.length){ let rows=''; top.forEach((a,i)=>{ const r=i+1; rows+='<div class="pw-htop-row pw-rank-'+r+'"><span class="pw-htop-rank">'+r+'</span><span class="pw-htop-av">'+esc(wvInitials(a.name))+'</span><span class="pw-htop-name">'+esc(a.name)+'</span><span class="pw-htop-val">'+a.month.done+'</span></div>'; }); el.innerHTML='<div class="pw-dist-top"><span class="pw-eyebrow">À l\'honneur ce mois</span></div><div class="pw-htop">'+rows+'</div>'; } else { el.innerHTML='<div class="pw-dist-top"><span class="pw-eyebrow">À l\'honneur ce mois</span></div><div class="pw-feed-empty">Les premiers rendez-vous mettront l\'équipe à l\'honneur ici.</div>'; } } else { el.innerHTML='<div class="pw-dist-top"><span class="pw-eyebrow">Performance collective</span></div><div class="pw-feed-empty">Chaque rendez-vous compte pour l\'objectif commun. Les résultats individuels restent valorisés dans chaque espace.</div>'; } }
 let _wvDistPrev={};
+/* ===== ÉQUILIBRE PAR COMMERCIAL · une colonne par équipe TMK, barres sur une échelle commune =====
+   Remplace le radar circulaire : sur le cercle, deux noms longs voisins en bas du dessin se
+   recouvraient (Gaëtan et Fabien Rennes). Ici chaque commercial a sa propre ligne, un nom ne peut
+   plus toucher celui du voisin, et l'échelle partagée garde visible l'écart entre les équipes. */
+function wvHexA(hex, a){ const m=/^#?([0-9a-f]{6})$/i.exec(String(hex||'')); if(!m) return 'rgba(142,142,147,'+a+')'; const n=parseInt(m[1],16); return 'rgba('+((n>>16)&255)+','+((n>>8)&255)+','+(n&255)+','+a+')'; }
+function wvFmt1(v){ return (Math.round(v*10)%10===0)?String(Math.round(v)):String(Math.round(v*10)/10).replace('.',','); }
+/* L'étiquette « équilibre » se cale sur la piste réelle des barres, quelle que soit la mise en page. */
+function wvEqAlignScale(root){
+  const cols=root.querySelectorAll('.lab-eqcol');
+  for(let k=0;k<cols.length;k++){
+    const sc=cols[k].querySelector('.lab-eqscale'), tr=cols[k].querySelector('.lab-eqtrack');
+    if(!sc || !tr) continue;
+    sc.style.marginLeft='0px'; sc.style.width='auto';
+    const a=sc.getBoundingClientRect(), b=tr.getBoundingClientRect();
+    if(a.width>0 && b.width>0){ sc.style.marginLeft=Math.max(0, b.left-a.left).toFixed(1)+'px'; sc.style.width=b.width.toFixed(1)+'px'; }
+  }
+}
+/* Ajustement à la place réellement disponible. On part de l'échelle prévue pour le nombre de lignes,
+   on passe les en-têtes sur deux lignes si un nom de TMK ne tient pas, puis on resserre par petits pas
+   tant qu'une colonne déborde en hauteur. Un nom de commercial trop long fait aussi resserrer, jamais
+   sous 0,8 : au delà, deux lignes (ou l'ellipse en mode dense) valent mieux qu'un texte minuscule. */
+function wvEqFit(root){
+  if(!root || !root.isConnected) return;
+  const base=parseFloat(root.getAttribute('data-ds'))||1;
+  let ds=base;
+  root.classList.remove('stack');
+  root.style.setProperty('--ds', ds.toFixed(3));
+  if(!root.clientHeight || !root.clientWidth) return;
+  const dense=root.classList.contains('dense');
+  const bodies=root.querySelectorAll('.lab-eqbody');
+  const rows=root.querySelectorAll('.lab-eqrow');
+  const names=root.querySelectorAll('.lab-eqnm');
+  const heads=root.querySelectorAll('.lab-eqtm');
+  for(let k=0;k<heads.length;k++){ if(heads[k].scrollWidth>heads[k].clientWidth+1){ root.classList.add('stack'); break; } }
+  /* Mesure sur le contenu utile (texte et piste), pas sur scrollHeight : le trait d'équilibre
+     dépasse volontairement de la piste et fausserait le calcul. */
+  const over=function(){
+    if(dense){
+      for(let k=0;k<bodies.length;k++){
+        const th=parseFloat(getComputedStyle(bodies[k]).gridTemplateRows)||0; if(!th) continue;
+        const it=bodies[k].querySelectorAll('.lab-eqnm, .lab-eqv');
+        for(let j=0;j<it.length;j++){ if(it[j].offsetHeight*1.18>th+0.5) return 'v'; }
+      }
+      for(let k=0;k<names.length;k++){ if(names[k].scrollWidth>names[k].clientWidth+1) return 'h'; }
+    } else {
+      const gap=rows.length?(parseFloat(getComputedStyle(rows[0]).rowGap)||0):0;
+      for(let k=0;k<rows.length;k++){
+        const r=rows[k], ln=r.firstElementChild, tk=r.lastElementChild;
+        if(ln && tk && ln.offsetHeight+gap+tk.offsetHeight>r.clientHeight+0.5) return 'v';
+      }
+      for(let k=0;k<names.length;k++){ const e=names[k]; const fs=parseFloat(getComputedStyle(e).fontSize)||12; if(e.offsetHeight>fs*1.7) return 'h'; }
+    }
+    return '';
+  };
+  for(let guard=0; guard<18; guard++){
+    const o=over(); if(!o) break;
+    const floor=(o==='h')?0.8:0.42;
+    if(ds<=floor+0.001) break;
+    ds=Math.max(floor, ds*0.94);
+    root.style.setProperty('--ds', ds.toFixed(3));
+  }
+  wvEqAlignScale(root);
+}
+let _wvEqRO=null, _wvEqRT=null;
+function wvEqWatch(wrap){
+  if(_wvEqRO){ try{ _wvEqRO.disconnect(); }catch(e){} _wvEqRO=null; }
+  if(!wrap || typeof ResizeObserver==='undefined') return;
+  let pend=false;
+  _wvEqRO=new ResizeObserver(function(){ if(pend) return; pend=true; requestAnimationFrame(function(){ pend=false; wvEqFit(wrap.querySelector('.lab-eq')); }); });
+  _wvEqRO.observe(wrap);
+}
+if(typeof ResizeObserver==='undefined'){
+  window.addEventListener('resize', function(){ clearTimeout(_wvEqRT); _wvEqRT=setTimeout(function(){ wvEqFit(document.querySelector('#wvDist .lab-eq')); }, 200); });
+}
 function wvUpdateDist(dist, colors){
   const el=document.getElementById('wvDist'); if(!el) return;
   const raw=((dist&&dist.list)||[]).slice();
@@ -985,71 +1059,65 @@ function wvUpdateDist(dist, colors){
   const OTHER='__autres__';
   const aColor={}; agents.forEach(function(a,i){ aColor[a]=color(a,i); }); aColor[OTHER]='#8E8E93';
   const list=raw.map(function(c){ const ag=(c.owner!==undefined)?c.owner:((owner[c.nom]!==undefined)?owner[c.nom]:OTHER); return {nom:c.nom, label:c.label||c.nom, count:c.count, ag:ag}; })
-    .sort(function(a,b){ const ia=(a.ag===OTHER?999:aIdx[a.ag]), ib=(b.ag===OTHER?999:aIdx[b.ag]); if(ia!==ib) return ia-ib; return a.nom<b.nom?-1:(a.nom>b.nom?1:0); });
+    .sort(function(a,b){ const ia=(a.ag===OTHER?999:aIdx[a.ag]), ib=(b.ag===OTHER?999:aIdx[b.ag]); if(ia!==ib) return ia-ib; if(a.count!==b.count) return b.count-a.count; return String(a.label).localeCompare(String(b.label),'fr'); });
   const N=list.length;
   const total=list.reduce(function(s2,c){ return s2+c.count; },0);
   const avg=N?total/N:0;
-  const avgTxt=(Math.round(avg*10)%10===0)?String(Math.round(avg)):String(Math.round(avg*10)/10).replace('.',',');
-  const verdict='';
-  const head='<div class="pw-dist-top"><span class="pw-eyebrow">Équilibre des rendez-vous par commercial <span class="pw-dist-cap">· tous TMK confondus · anneau pointillé : équilibre à '+avgTxt+' R1 / commercial · fond teinté : équipe du TMK</span></span>'+verdict+'</div>';
-  if(N<3){ el.innerHTML=head+'<div class="pw-feed-empty">Le radar d\'équilibre s\'affiche dès trois commerciaux configurés.</div>'; return; }
-  const cx=272, cy=164, R=128, R0=30;
-  const maxV=Math.max(1, Math.max.apply(null, list.map(function(c){return c.count;})), Math.ceil(avg));
-  const ang=function(i){ return -Math.PI/2 + i*2*Math.PI/N; };
-  const rOf=function(v){ return R0+(R-R0)*v/maxV; };
-  const PXa=function(a,r){ return (cx+r*Math.cos(a)).toFixed(1); };
-  const PYa=function(a,r){ return (cy+r*Math.sin(a)).toFixed(1); };
-  /* Territoires des TMK : secteurs très pâles derrière les barres */
-  let wedges=''; const half=Math.PI/N;
-  let gi=0;
-  while(gi<N){
-    let gj=gi; while(gj+1<N && list[gj+1].ag===list[gi].ag) gj++;
-    const a0=ang(gi)-half, a1=ang(gj)+half, Rw=R+6;
-    const large=(a1-a0)>Math.PI?1:0;
-    wedges+='<path class="lab-wedge" d="M '+cx+' '+cy+' L '+PXa(a0,Rw)+' '+PYa(a0,Rw)+' A '+Rw+' '+Rw+' 0 '+large+' 1 '+PXa(a1,Rw)+' '+PYa(a1,Rw)+' Z" fill="'+aColor[list[gi].ag]+'" opacity="0.07"/>';
-    if(gi>0){ wedges+='<line x1="'+PXa(a0,14)+'" y1="'+PYa(a0,14)+'" x2="'+PXa(a0,R+4)+'" y2="'+PYa(a0,R+4)+'" stroke="var(--pw-hair-2)" stroke-width="1" opacity=".6"/>'; }
-    gi=gj+1;
-  }
-  /* Repères : anneau externe fin, anneau d'équilibre pointillé */
-  let rings='<circle cx="'+cx+'" cy="'+cy+'" r="'+R+'" fill="none" stroke="var(--pw-hair-2)" stroke-width="1" opacity=".5"/>';
-  if(avg>0){ rings+='<circle cx="'+cx+'" cy="'+cy+'" r="'+rOf(avg).toFixed(1)+'" fill="none" stroke="#FF6B1A" stroke-width="2" stroke-dasharray="4 6" stroke-linecap="round" opacity="0.8"/>'; }
-  /* Barres radiales : une par commercial, couleur de son TMK, embout perlé */
-  let bars='';
-  for(let i=0;i<N;i++){
-    const c=list[i]; const col=aColor[c.ag]; const a=ang(i);
-    if(c.count>0){
-      const r=rOf(c.count);
+  const avgTxt=wvFmt1(avg);
+  /* Mois encore vierge : pas de trait à décrire, la légende le dit simplement. */
+  const cap=(total>0)?('trait orange : équilibre à '+avgTxt+' R1 par commercial · chiffre en ambre : sous l\u2019équilibre'):(wallIsPast()?'aucun R1 sur ce mois':'aucun R1 posé pour l\u2019instant');
+  const head='<div class="pw-dist-top"><span class="pw-eyebrow">Équilibre des rendez-vous par commercial <span class="pw-dist-cap">· tous TMK confondus · '+cap+'</span></span></div>';
+  if(N<3){ wvEqWatch(null); el.innerHTML=head+'<div class="pw-feed-empty">La répartition par commercial s\u2019affiche dès trois commerciaux configurés.</div>'; return; }
+  const maxV=Math.max(1, Math.max.apply(null, list.map(function(c){ return c.count; })), Math.ceil(avg));
+  const pct=function(v){ return Math.max(0, Math.min(100, v/maxV*100)); };
+  const eqPct=pct(avg);
+  /* Regroupement par équipe, dans l'ordre des TMK : la couleur reste celle du TMK partout sur le mur. */
+  const groups=[]; let cur=null;
+  list.forEach(function(c){ if(!cur || cur.ag!==c.ag){ cur={ag:c.ag, rows:[]}; groups.push(cur); } cur.rows.push(c); });
+  const maxRows=Math.max.apply(null, groups.map(function(g){ return g.rows.length; }));
+  const G=groups.length;
+  /* Au delà de huit commerciaux dans une même équipe, nom, barre et chiffre passent sur une seule ligne. */
+  const dense=maxRows>=9;
+  const dsRows=Math.min(1, (dense?10.5:6.4)/maxRows);
+  const dsCols=G<=3?1:(G===4?0.92:0.84);
+  const ds0=Math.max(0.42, Math.min(dsRows, dsCols));
+  const labelRight=eqPct>62;
+  const rowsCss='grid-template-rows:repeat('+maxRows+', minmax(min-content, 1fr)); grid-template-rows:repeat('+maxRows+', min(9.5vh, calc(100% / '+maxRows+')))';
+  const cols=groups.map(function(g){
+    const col=aColor[g.ag];
+    const sum=g.rows.reduce(function(s2,c){ return s2+c.count; },0);
+    const gAvg=sum/g.rows.length;
+    const gUnder=gAvg<avg-0.001;
+    const n=g.rows.length;
+    const anon=(g.ag!==OTHER && !wallNames);
+    const title=(g.ag===OTHER)?'Sans TMK attitré':(anon?(n+' commercia'+(n>1?'ux':'l')):g.ag);
+    const hd='<div class="lab-eqhd"><i></i><span class="lab-eqtm'+(anon?' anon':'')+'">'+esc(title)+'</span><span class="lab-eqavg'+(gUnder?' under':'')+'">moyenne<b>'+wvFmt1(gAvg)+'</b></span></div>';
+    const scale=(avg>0)?('<div class="lab-eqscale'+(labelRight?' rt':'')+'"><span style="left:'+eqPct.toFixed(2)+'%">équilibre <b>'+avgTxt+'</b></span></div>'):'<div class="lab-eqscale"></div>';
+    const rows=g.rows.map(function(c, ri){
+      const under=c.count<avg-0.001;
+      const w=c.count>0?Math.max(2.5, pct(c.count)):0;
       const prev=_wvDistPrev[c.nom];
-      let anim='';
-      if(prev!==undefined && prev!==c.count){
-        const rp=rOf(prev);
-        anim='<animate attributeName="x2" from="'+PXa(a,rp)+'" to="'+PXa(a,r)+'" dur="0.55s" fill="freeze"/>'
-            +'<animate attributeName="y2" from="'+PYa(a,rp)+'" to="'+PYa(a,r)+'" dur="0.55s" fill="freeze"/>';
-      }
-      bars+='<line x1="'+PXa(a,R0)+'" y1="'+PYa(a,R0)+'" x2="'+PXa(a,r)+'" y2="'+PYa(a,r)+'" stroke="'+col+'" stroke-width="11" stroke-linecap="round" opacity="0.9">'+anim+'</line>';
-      bars+='<circle cx="'+PXa(a,r)+'" cy="'+PYa(a,r)+'" r="4.6" fill="'+col+'" stroke="var(--elev)" stroke-width="1.8"/>';
-    } else {
-      bars+='<circle cx="'+PXa(a,R0)+'" cy="'+PYa(a,R0)+'" r="3.2" fill="var(--pw-hair-2)"/>';
-    }
-  }
-  /* Médaillon central : la cible d'équilibre au cœur */
-  const core='<circle cx="'+cx+'" cy="'+cy+'" r="21" fill="var(--elev)" stroke="var(--pw-hair-2)" stroke-width="1.2"/>'
-    +'<text x="'+cx+'" y="'+(cy-2)+'" text-anchor="middle" dominant-baseline="middle" font-size="15" font-weight="800" fill="#FF6B1A">'+avgTxt+'</text>'
-    +'<text x="'+cx+'" y="'+(cy+11)+'" text-anchor="middle" font-size="6.6" font-weight="700" letter-spacing="1.4" fill="var(--tx-3)">\u00c9QUILIBRE</text>';
-  /* Libellés : nom couleur TMK, compte pur, ambre quand sous l'anneau */
-  let labels='';
-  for(let i=0;i<N;i++){
-    const c=list[i]; const col=aColor[c.ag];
-    const below=c.count<avg-0.001;
-    const co=Math.cos(ang(i)), si=Math.sin(ang(i));
-    const anchor=co>0.3?'start':(co<-0.3?'end':'middle');
-    const lx=(cx+(R+16)*co).toFixed(1), ly=(cy+(R+16)*si).toFixed(1);
-    const lb=c.label||c.nom; const nm=lb.length>16?(lb.slice(0,15)+'\u2026'):lb;
-    const valCol=below?'var(--warn-fill)':col;
-    labels+='<text text-anchor="'+anchor+'" dominant-baseline="middle"><tspan x="'+lx+'" y="'+ly+'" dy="-0.42em" font-size="14.5" font-weight="600" fill="'+col+'">'+esc(nm)+'</tspan><tspan x="'+lx+'" y="'+ly+'" dy="0.78em" font-size="16.5" font-weight="800" fill="'+valCol+'">'+c.count+'</tspan></text>';
-  }
+      let w0=w;
+      if(prev!==undefined && prev!==c.count){ w0=prev>0?Math.max(2.5, pct(prev)):0; }
+      const grow=(w0!==w)?(' data-w="'+w.toFixed(2)+'"'):'';
+      const lb=esc(c.label||c.nom);
+      return '<li class="lab-eqrow'+(under?' under':'')+'" style="--r:'+(ri+1)+'" title="'+lb.replace(/"/g,'&quot;')+' : '+c.count+' R1">'
+        +'<div class="lab-eqline"><span class="lab-eqnm">'+lb+'</span><b class="lab-eqv">'+c.count+'</b></div>'
+        +'<div class="lab-eqtrack"><i style="width:'+w0.toFixed(2)+'%"'+grow+'></i>'+(avg>0?('<u style="left:'+eqPct.toFixed(2)+'%"></u>'):'')+'</div>'
+        +'</li>';
+    }).join('');
+    return '<section class="lab-eqcol" style="--tc:'+col+'; --tt:'+wvHexA(col,0.055)+'; --ttd:'+wvHexA(col,0.10)+'">'+hd+scale
+      +'<ol class="lab-eqbody" style="'+rowsCss+'">'+rows+'</ol></section>';
+  }).join('');
   list.forEach(function(c){ _wvDistPrev[c.nom]=c.count; });
-  el.innerHTML=head+'<div class="pw-radar-wrap"><svg class="pw-radar-svg" viewBox="0 0 544 334" preserveAspectRatio="xMidYMid meet">'+wedges+rings+bars+core+labels+'</svg></div>'; }
+  el.innerHTML=head+'<div class="pw-radar-wrap pw-eq-wrap"><div class="lab-eq'+(dense?' dense':'')+'" data-ds="'+ds0.toFixed(3)+'" style="--ds:'+ds0.toFixed(3)+'; grid-template-columns:repeat('+G+', minmax(0,1fr))">'+cols+'</div></div>';
+  const root=el.querySelector('.lab-eq');
+  wvEqFit(root);
+  /* Barre qui a bougé depuis le dernier rendu : elle part de l'ancienne valeur et glisse vers la nouvelle. */
+  const movers=root?root.querySelectorAll('.lab-eqtrack i[data-w]'):[];
+  if(movers.length){ void root.offsetWidth; for(let k=0;k<movers.length;k++){ movers[k].style.width=movers[k].getAttribute('data-w')+'%'; } }
+  wvEqWatch(el.querySelector('.pw-eq-wrap'));
+}
 function wvNotifHost(){ let h=document.getElementById('wvNotifs'); if(!h){ h=document.createElement('div'); h.id='wvNotifs'; h.className='pw-notifs'; document.body.appendChild(h); } return h; }
 function wvNotify(title, sub, kind, accent){ const host=wvNotifHost(); const el=document.createElement('div'); el.className='pw-notif '+(kind||''); if(accent){ el.style.setProperty('--nacc', accent); } const ic=kind==='goal'?'\u2713':(kind==='cap'?'\u25CF':'\u2197'); el.innerHTML='<div class="pw-notif-ic">'+ic+'</div><div class="pw-notif-tx"><div class="pw-notif-t">'+title+'</div><div class="pw-notif-s">'+sub+'</div></div>'; host.appendChild(el); requestAnimationFrame(()=>el.classList.add('in')); setTimeout(()=>{ el.classList.remove('in'); el.classList.add('out'); setTimeout(()=>{ if(el.parentNode) el.parentNode.removeChild(el); },520); }, 4200); while(host.children.length>3 && host.firstChild) host.removeChild(host.firstChild); }
 function wvCelebrate(rec){ const g=document.getElementById('wvRingGlow'); if(g){ g.classList.remove('pulse'); void g.offsetWidth; g.classList.add('pulse'); } const ag=(rec&&rec.agent)||''; const d=(rec&&rec.d)||{}; const sc=(d.societe&&String(d.societe).indexOf('non renseign')<0)?d.societe:''; const com=d.commercial?String(d.commercial):''; const dest=(sc?esc(sc):'Nouveau rendez-vous')+(com?(' \u2192 '+esc(com)):''); let title,sub; if(wallNames && ag){ title=esc(ag)+' décroche un rendez-vous'; sub=(sc||com)?dest:'Terrain · un pas de plus'; } else { title='Nouveau rendez-vous terrain'; sub=(sc||com)?dest:'Un pas de plus vers l\'objectif du mois'; } const ai=agentList().indexOf(ag); wvNotify(title, sub, 'win', ag?color(ag, ai<0?0:ai):null); wvChime(); }
@@ -1495,6 +1563,44 @@ body.wall .pw-race .pw-htop-av{ width:clamp(24px,2.6vh,34px); height:clamp(24px,
 body.wall .pw-race .pw-htop-name{ font-size:clamp(13px,1.65vh,20px); }
 body.wall .pw-race .pw-htop-val{ font-size:clamp(15px,2vh,25px); }
 body.wall .pw-race .pw-race-sub{ display:inline; margin-left:.55em; font-size:clamp(9px,1.15vh,13px); }
+/* X16 · équilibre par commercial en colonnes par équipe TMK : plus aucun libellé ne peut en chevaucher un autre */
+body.wall .pw-bcard-dist .pw-eq-wrap{ display:flex; align-items:stretch; justify-content:flex-start; padding-top:clamp(2px,.4vh,6px); }
+.lab-eq{ --ds:1; flex:1; min-width:0; min-height:0; display:grid; grid-template-rows:minmax(0,1fr); gap:clamp(10px,1vw,18px); }
+.lab-eqcol{ display:flex; flex-direction:column; min-width:0; min-height:0; width:100%; max-width:40vw; justify-self:center; padding:calc(1.15vh * max(var(--ds), .7)) clamp(11px,1vw,18px) calc(.8vh * max(var(--ds), .7)); border-radius:1.4vh; background:var(--tt); }
+html[data-theme="dark"] .lab-eqcol{ background:var(--ttd); }
+.lab-eqhd{ flex:0 0 auto; display:flex; align-items:center; gap:clamp(6px,.5vw,10px); min-width:0; padding-bottom:calc(.75vh * max(var(--ds), .75)); border-bottom:1px solid var(--pw-hair); font-size:max(12px, calc(2.05vh * max(var(--ds), .78))); line-height:1.15; }
+.lab-eqhd i{ width:.6em; height:.6em; border-radius:50%; background:var(--tc); flex-shrink:0; }
+.lab-eqtm{ flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-family:var(--disp); font-weight:800; letter-spacing:-.015em; color:var(--tx); }
+.lab-eqtm.anon{ font-weight:700; color:var(--tx-2); }
+.lab-eqavg{ flex-shrink:0; display:flex; align-items:baseline; gap:.35em; font-family:var(--ui); font-weight:600; font-size:.66em; color:var(--tx-3); white-space:nowrap; }
+.lab-eqavg b{ font-family:var(--disp); font-weight:800; font-size:1.3em; letter-spacing:-.01em; color:var(--tx-2); font-variant-numeric:tabular-nums; }
+.lab-eqavg.under b{ color:var(--warn); }
+.lab-eq.stack .lab-eqhd{ flex-wrap:wrap; row-gap:.2em; }
+.lab-eq.stack .lab-eqtm{ flex:1 1 60%; }
+.lab-eq.stack .lab-eqavg{ order:3; flex:0 0 100%; padding-left:calc(.91em + clamp(6px,.5vw,10px)); }
+.lab-eqscale{ position:relative; flex:0 0 auto; height:max(13px, calc(2.2vh * var(--ds))); margin-top:calc(.45vh * var(--ds)); }
+.lab-eqscale span{ position:absolute; bottom:0; margin-left:-1px; padding-left:.45em; border-left:2px solid #FF6B1A; font-family:var(--ui); font-weight:600; font-size:max(9px, calc(1.25vh * var(--ds))); line-height:1.35; color:var(--tx-3); white-space:nowrap; }
+.lab-eqscale span b{ font-family:var(--disp); font-weight:800; color:var(--accent); font-variant-numeric:tabular-nums; }
+.lab-eqscale.rt span{ transform:translateX(-100%); margin-left:1px; padding-left:0; padding-right:.45em; border-left:0; border-right:2px solid #FF6B1A; }
+.lab-eqbody{ flex:1 1 0; min-height:0; overflow:hidden; list-style:none; margin:0; padding:0; display:grid; align-content:start; }
+.lab-eqrow{ display:flex; flex-direction:column; justify-content:center; justify-content:safe center; gap:calc(.55vh * var(--ds)); min-width:0; min-height:0; }
+.lab-eqline{ display:flex; align-items:baseline; justify-content:space-between; gap:clamp(8px,.7vw,14px); min-width:0; }
+.lab-eqnm{ flex:1; min-width:0; display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; overflow:hidden; overflow-wrap:anywhere; font-family:var(--ui); font-weight:600; font-size:max(10px, calc(2.2vh * var(--ds))); line-height:1.12; letter-spacing:-.01em; color:var(--tx); }
+.lab-eqv{ flex-shrink:0; font-family:var(--disp); font-weight:800; font-size:max(12px, calc(2.75vh * var(--ds))); line-height:1.12; letter-spacing:-.02em; color:var(--tx); font-variant-numeric:tabular-nums; }
+.lab-eqrow.under .lab-eqv{ color:var(--warn); }
+.lab-eqtrack{ position:relative; flex:0 0 auto; height:max(5px, calc(1.05vh * var(--ds))); border-radius:99px; background:var(--pw-hair); }
+.lab-eqtrack i{ position:absolute; left:0; top:0; bottom:0; border-radius:99px; background:var(--tc); transition:width .7s var(--ease); }
+.lab-eqtrack u{ position:absolute; top:calc(-.45vh * var(--ds) - 1px); bottom:calc(-.45vh * var(--ds) - 1px); width:2px; margin-left:-1px; border-radius:2px; background:#FF6B1A; box-shadow:0 0 0 1.5px var(--elev); }
+/* Mode dense : une ligne par commercial, colonnes partagées pour que les barres et les traits restent alignés */
+.lab-eq.dense .lab-eqbody{ grid-template-columns:fit-content(46%) minmax(2.5em,1fr) max-content; column-gap:clamp(8px,.7vw,13px); align-items:center; }
+.lab-eq.dense .lab-eqrow, .lab-eq.dense .lab-eqline{ display:contents; }
+.lab-eq.dense .lab-eqnm{ grid-column:1; grid-row:var(--r); display:block; white-space:nowrap; text-overflow:ellipsis; overflow-wrap:normal; }
+.lab-eq.dense .lab-eqtrack{ grid-column:2; grid-row:var(--r); }
+.lab-eq.dense .lab-eqv{ grid-column:3; grid-row:var(--r); text-align:right; min-width:1.2em; }
+@media(prefers-reduced-motion:reduce){ .lab-eqtrack i{ transition:none; } }
+/* Encart « À prioriser » : le nom prend sa largeur avant la mini barre, la dernière ligne peut passer à la ligne */
+body.wall .lab-balbox .lab-pnm{ flex:0 1 auto; }
+body.wall .lab-balbox .lab-sub1{ white-space:normal; overflow:visible; }
 </style>
 <script>
 /* ================= LABORATOIRE X1 · intelligence de plateau, chrome futuriste, démo intégrée =================
